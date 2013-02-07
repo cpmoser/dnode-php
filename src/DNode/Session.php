@@ -113,6 +113,37 @@ class Session extends EventEmitter
         $this->ready = true;
         $this->emit('ready');
     }
+    
+    protected function scrubNode ($node, $idPath, $paths = array(), $links = array())
+    {
+        if (is_object($node)) {
+            if ($node instanceof \Closure) {
+                $this->callbacks[$this->cbId] = $node;
+                $paths[$this->cbId] = array($id);
+                $this->cbId++;
+                $obj[$id] = '[Function]';
+                return;
+            }
+
+            $reflector = new \ReflectionClass($node);
+            $methods = $reflector->getMethods();
+            foreach ($methods as $method) {
+                if (!$method->isPublic() or $method->isConstructor()) {
+                    continue;
+                }
+
+                $methodName = $method->getName();
+
+                $this->callbacks[$this->cbId] = function() use ($methodName, $node) {
+                    call_user_func_array(array($node, $methodName), func_get_args());
+                };
+                
+                $paths[$this->cbId] = array($id, $methodName);
+                $this->cbId++;
+                $node->$methodName = '[Function]';
+            }
+        }
+    }
 
     private function scrub($obj)
     {
@@ -120,35 +151,17 @@ class Session extends EventEmitter
         $links = array();
 
         // TODO: Deep traversal
-        foreach ($obj as $id => $node) {
-            if (is_object($node)) {
-                if ($node instanceof \Closure) {
-                    $this->callbacks[$this->cbId] = $node;
-                    $paths[$this->cbId] = array($id);
-                    $this->cbId++;
-                    $obj[$id] = '[Function]';
-                    continue;
-                }
-
-                $reflector = new \ReflectionClass($node);
-                $methods = $reflector->getMethods();
-                foreach ($methods as $method) {
-                    if (!$method->isPublic()) {
-                        continue;
-                    }
-
-                    $methodName = $method->getName();
-
-                    $this->callbacks[$this->cbId] = function() use ($methodName, $node) {
-                        call_user_func_array(array($node, $methodName), func_get_args());
-                    };
-                    $paths[$this->cbId] = array($id, $methodName);
-                    $this->cbId++;
-                    $node->$methodName = '[Function]';
-                }
-            }
+        foreach ($obj as $id => $node) 
+        {
+        	$idPath = array($id);
+        	$this->scrubNode($node, $idPath, &$paths, &$links);
         }
-
+        
+        if (count($obj) === 3)
+        {
+        	\Yii::log($paths);
+		}
+		
         return array(
             'arguments' => $obj,
             'callbacks' => $paths,
