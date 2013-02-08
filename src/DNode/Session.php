@@ -119,9 +119,10 @@ class Session extends EventEmitter
         if (is_object($node)) {
             if ($node instanceof \Closure) {
                 $this->callbacks[$this->cbId] = $node;
-                $paths[$this->cbId] = array($id);
+                $paths[$this->cbId] = $idPath; //array($id);
                 $this->cbId++;
-                $obj[$id] = '[Function]';
+            //    $obj[$id] = '[Function]';
+            	$node = '[Function]';
                 return;
             }
 
@@ -138,29 +139,66 @@ class Session extends EventEmitter
                     call_user_func_array(array($node, $methodName), func_get_args());
                 };
                 
-                $paths[$this->cbId] = array($id, $methodName);
+                $newIdPath = array_merge($idPath, array($methodName));
+                
+                $paths[$this->cbId] = $newIdPath; //array($id, $methodName);
                 $this->cbId++;
                 $node->$methodName = '[Function]';
             }
+            
+            $properties = $reflector->getProperties();
+            
+            foreach ($properties as $property)
+            {
+            	if ($property->isPublic() && is_array($node->{$property->getName()}))
+            	{
+            		foreach ($node->{$property->getName()} as $childId => &$child)
+            		{
+            			$this->scrubNode($child, array_merge($idPath, array($childId)), &$paths, &$links);
+            		}
+            	}
+            }
+        }
+        
+        // check for associative array later
+        if (is_array($node))
+        {
+        	foreach ($node as $childId => &$childNode)
+        	{
+        		$newIdPath = array_merge($idPath, array($childId));
+        		$this->scrubNode(&$childNode, $newIdPath, &$paths, &$links);
+        	}
         }
     }
 
     private function scrub($obj)
     {
+    	$arrayIs = false;
         $paths = array();
         $links = array();
 
         // TODO: Deep traversal
         foreach ($obj as $id => $node) 
         {
+      		if (is_object($node))
+        	\Yii::log(get_class($node));
+        	
+        	if (is_array($node))
+        	{
+        		\Yii::log($node);
+        		$arrayIs = true;
+        	}
+        	
         	$idPath = array($id);
-        	$this->scrubNode($node, $idPath, &$paths, &$links);
+        	$this->scrubNode(&$node, $idPath, &$paths, &$links);
         }
-        
-        if (count($obj) === 3)
-        {
-        	\Yii::log($paths);
+		
+		if ($arrayIs)
+		{
+			\Yii::log($paths);
+			\Yii::log(json_decode(json_encode($obj)));
 		}
+		
 		
         return array(
             'arguments' => $obj,
