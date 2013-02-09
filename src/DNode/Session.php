@@ -114,9 +114,9 @@ class Session extends EventEmitter
         $this->emit('ready');
     }
     
-    protected function scrubNode ($node, $idPath, $paths = array(), $links = array())
+    protected function scrubNode (&$node, $idPath, &$paths = array(), &$links = array())
     {
-        if (is_object($node)) {
+       if (is_object($node)) {
             if ($node instanceof \Closure) {
                 $this->callbacks[$this->cbId] = $node;
                 $paths[$this->cbId] = $idPath; //array($id);
@@ -128,6 +128,7 @@ class Session extends EventEmitter
 
             $reflector = new \ReflectionClass($node);
             $methods = $reflector->getMethods();
+			
             foreach ($methods as $method) {
                 if (!$method->isPublic() or $method->isConstructor()) {
                     continue;
@@ -147,26 +148,34 @@ class Session extends EventEmitter
             }
             
             $properties = $reflector->getProperties();
-            
+			
             foreach ($properties as $property)
             {
-            	if ($property->isPublic() && is_array($node->{$property->getName()}))
+				$propertyIdPath = array_merge($idPath, array($property->getName()));
+				
+            	if ($property->isPublic())
             	{
-            		foreach ($node->{$property->getName()} as $childId => &$child)
-            		{
-            			$this->scrubNode($child, array_merge($idPath, array($childId)), &$paths, &$links);
-            		}
+					if (is_array($node->{$property->getName()}))
+					{
+						foreach ($node->{$property->getName()} as $childId => &$child)
+						{
+							$this->scrubNode($child, array_merge($propertyIdPath, array($childId)), $paths, $links);
+						}
+					}
+					else
+					{
+						$this->scrubNode($node->{$property->getName()}, $propertyIdPath, $paths, $links);
+					}
             	}
             }
         }
         
-        // check for associative array later
+        // check for associative array later (which would be treated like an object)
         if (is_array($node))
         {
         	foreach ($node as $childId => &$childNode)
         	{
-        		$newIdPath = array_merge($idPath, array($childId));
-        		$this->scrubNode(&$childNode, $newIdPath, &$paths, &$links);
+        		$this->scrubNode($childNode, array_merge($idPath, array($childId)), $paths, $links);
         	}
         }
     }
@@ -180,26 +189,17 @@ class Session extends EventEmitter
         // TODO: Deep traversal
         foreach ($obj as $id => $node) 
         {
-      		if (is_object($node))
-        	\Yii::log(get_class($node));
-        	
-        	if (is_array($node))
-        	{
-        		\Yii::log($node);
-        		$arrayIs = true;
-        	}
-        	
         	$idPath = array($id);
-        	$this->scrubNode(&$node, $idPath, &$paths, &$links);
+        	$this->scrubNode($node, $idPath, $paths, $links);
         }
 		
-		if ($arrayIs)
+	/*	if ($arrayIs)
 		{
 			\Yii::log($paths);
 			\Yii::log(json_decode(json_encode($obj)));
 		}
 		
-		
+		*/
         return array(
             'arguments' => $obj,
             'callbacks' => $paths,
