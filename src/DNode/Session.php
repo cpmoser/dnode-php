@@ -130,7 +130,7 @@ class Session extends EventEmitter
             $methods = $reflector->getMethods();
 			
             foreach ($methods as $method) {
-                if (!$method->isPublic() or $method->isConstructor()) {
+                if (!$method->isPublic() or $method->isConstructor() or $method->isStatic()) {
                     continue;
                 }
 
